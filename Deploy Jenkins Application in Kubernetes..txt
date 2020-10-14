@@ -1,0 +1,101 @@
+########Login to  Kubernetes Master Node ###############
+
+ 
+$  kubectl create namespace jenkins
+
+
+$  vim jenkins.yaml               
+
+
+#and paste the data rovided in the installation foldder inside jenkins.yaml file
+
+
+
+$  kubectl create -f jenkins.yaml --namespace jenkins 
+
+----------------------------------------------------------------------
+
+
+$  vim jenkins-service.yaml      
+
+
+#and paste the data rovided in the installation foldder inside jenkins-service.yaml file
+
+
+$  kubectl create -f jenkins-service.yaml --namespace jenkins
+
+
+-----------------------------------------------------------------------------------
+
+
+Step 2 — Accessing the Jenkins UI
+
+
+
+In this step, you will access and explore the Jenkins UI. Your NodePort service is accessible on port 30000 across the cluster nodes. You need to retrieve a node IP to access the Jenkins UI.
+
+
+Use kubectl to retrieve your node IPs:
+
+$  kubectl get nodes -o wide
+
+
+
+#kubectl will produce an output with your external IPs:
+
+Output
+NAME        STATUS   ROLES    AGE   VERSION    INTERNAL-IP        EXTERNAL-IP        OS-IMAGE                       KERNEL-VERSION          CONTAINER-RUNTIME
+your_node   Ready    <none>   16d   v1.18.8   your_internal_ip   your_external_ip   Debian GNU/Linux 10 (buster)   4.19.0-10-cloud-amd64   docker://18.9.9
+your_node   Ready    <none>   16d   v1.18.8   your_internal_ip   your_external_ip   Debian GNU/Linux 10 (buster)   4.19.0-10-cloud-amd64   docker://18.9.9
+your_node   Ready    <none>   16d   v1.18.8   your_internal_ip   your_external_ip   Debian GNU/Linux 10 (buster)   4.19.0-10-cloud-amd64   docker://18.9.9
+Copy one of the your_external_ip values.
+
+
+Now open a web browser and navigate to http://your_external_ip:30000.
+
+
+For AWS Ec2  we beed to edit inbond  rule and add 30000 as below 
+
+
+Custom TCP Rule      TCP       30000     0.0.0.0/0
+
+
+
+
+
+
+A page will appear asking for an administrator password and instructions on retrieving this password from the Jenkins Pod logs.
+
+Let’s use kubectl to pull the password from those logs.
+
+First, return to your terminal and retrieve your Pod name:
+
+
+
+$  kubectl get pods -n jenkins
+
+
+You will receive an output like this:
+
+NAME                       READY   STATUS    RESTARTS   AGE
+jenkins-6fb994cfc5-twnvn   1/1     Running   0          9m54s
+
+
+
+Next, check the Pod’s logs for the admin password. Replace the highlighted section with your pod name:
+
+
+$ kubectl logs jenkins-6fb994cfc5-twnvn -n jenkins
+
+
+
+
+
+
+
+
+
+
+
+
+

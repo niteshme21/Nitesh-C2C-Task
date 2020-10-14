@@ -1,0 +1,364 @@
+##############To create Prived regisrety in  Docker##########################
+
+
+1) install Docker and Docker-Compose
+
+2) install Nginx
+
+3) Need Nginx secured with Let’s Encrypt on your server
+
+
+____Extra command_________ 
+
+apt install firewalld
+
+
+systemctl stop firewalld
+
+
+apt install funnelweb
+
+
+apt install python3-certbot-nginx
+__________________________________________
+
+
+---------To install Private Registey---------- 
+
+
+
+Installing and Configuring the Docker Registry
+
+
+
+$  mkdir ~/docker-registry && cd $_
+
+$  mkdir data
+
+---------------------------------------------------------------------------------------
+$  vim docker-compose.yml  and paste below data inside  docker-compose.yml
+
+
+version: '3'
+
+services:
+
+  registry:
+    restart: always
+   
+    image: registry:2
+    ports:
+    - "5000:5000"
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Registry
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/registry.password
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /data
+    volumes:
+      - ./auth:/auth
+      - ./data:/data
+
+
+
+
+$  docker-compose up
+---------------------------------------------------------------
+
+
+Setting Up Nginx Port Forwarding
+
+
+$  sudo vim /etc/nginx/sites-available/example.com
+
+
+place below entry inside Location 
+
+
+...
+location / {
+    # Do not allow connections from docker 1.5 and earlier
+    # docker pre-1.6.0 did not properly set the user agent on ping, catch "Go *" user agents
+    if ($http_user_agent ~ "^(docker\/1\.(3|4|5(?!\.[0-9]-dev))|Go ).*$" ) {
+      return 404;
+    }
+
+    proxy_pass                          http://localhost:5000;
+    proxy_set_header  Host              $http_host;   # required for docker client's sake
+    proxy_set_header  X-Real-IP         $remote_addr; # pass on real client's IP
+    proxy_set_header  X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header  X-Forwarded-Proto $scheme;
+    proxy_read_timeout                  900;
+}
+...
+
+
+$  sudo service nginx restart
+
+
+$  cd ~/docker-registry
+
+$   docker-compose up
+
+
+
+In a browser window, open up the following url:
+
+
+https://example.com/v2
+
+
+You will see an empty JSON object, or:
+
+{}
+
+
+In your terminal, you’ll see output similar to the following:
+
+
+
+
+Now that you have set up port forwarding, you can move on to improving the security of your registry.
+
+Step 3 — Setting Up Authentication
+
+
+With Nginx proxying requests properly, you can now secure your registry with HTTP authentication to manage who has access to your Docker Registry. To achieve this, you’ll create an authentication file with htpasswd and add users to it. HTTP authentication is quick to set up and secure over a HTTPS connection, which is what the registry will use.
+
+You can install the htpasswd package by running the following:
+
+sudo apt install apache2-utils
+
+
+Now you’ll create the directory where you’ll store our authentication credentials, and change into that directory. $_ expands to the last argument of the previous command, in this case ~/docker-registry/auth:
+
+
+mkdir ~/docker-registry/auth && cd $_
+
+
+Next, you will create the first user as follows, replacing username with the username you want to use. The -B flag specifies bcrypt encryption, which is more secure than the default encryption. Enter the password when prompted:
+
+
+htpasswd -Bc registry.password username
+
+
+Note: To add more users, re-run the previous command without the -c option, (the c is for create):
+
+
+htpasswd registry.password username
+
+
+
+
+Next, you’ll edit the docker-compose.yml file to tell Docker to use the file you created to authenticate users.
+
+
+cd ~/docker-registry
+vim docker-compose.yml
+
+
+
+You can add environment variables and a volume for the auth/ directory that you created, by editing the docker-compose.yml file to tell Docker how you want to authenticate users. Add the following highlighted content to the file:
+
+docker-compose.yml
+version: '3'
+
+services:
+  registry:
+    image: registry:2
+    ports:
+    - "5000:5000"
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Registry
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/registry.password
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /data
+    volumes:
+      - ./auth:/auth
+      - ./data:/data
+
+
+
+
+For REGISTRY_AUTH, you have specified htpasswd, which is the authentication scheme you are using, and set REGISTRY_AUTH_HTPASSWD_PATH to the path of the authentication file. Finally, REGISTRY_AUTH_HTPASSWD_REALM signifies the name of htpasswd realm.
+
+You can now verify that your authentication works correctly, by running the registry and checking that it prompts users for a username and password.
+
+
+docker-compose up
+
+In a browser window, open https://example.com/v2.
+
+
+
+After entering username and the corresponding password, you will see {} once again. You’ve confirmed the basic authentication setup: the registry only returned the result after you entered the correct username and password. You have now secured your registry, and can continue to using the registry.
+
+
+Step 4 — Starting Docker Registry as a Service
+
+
+
+You want to ensure that your registry will start whenever the system boots up. If there are any unforeseen system crashes, you want to make sure the registry restarts when the server reboots. Open up docker-compose.yml:
+
+
+nano docker-compose.yml
+
+
+
+
+Add the following line of content under registry::
+
+docker-compose.yml
+
+
+
+...
+  registry:
+    restart: always
+
+
+
+
+
+
+...
+You can start your registry as a background process, which will allow you to exit the ssh session and persist the process:
+
+docker-compose up -d
+
+
+
+
+With your registry running in the background, you can now prepare Nginx for file uploads.
+
+Step 5 — Increasing File Upload Size for Nginx
+
+
+Before you can push an image to the registry, you need to ensure that your registry will be able to handle large file uploads. Although Docker splits large image uploads into separate layers, they can sometimes be over 1GB. By default, Nginx has a limit of 1MB on file uploads, so you need to edit the configuration file for nginx and set the max file upload size to 2GB.
+
+
+sudo nano /etc/nginx/nginx.conf
+
+
+
+
+Find the http section, and add the following line:
+
+/etc/nginx/nginx.conf
+...
+http {
+        client_max_body_size 2000M;
+        ...
+}
+...
+
+
+
+
+
+Finally, restart Nginx to apply the configuration changes:
+
+sudo service nginx restart
+
+
+You can now upload large images to your Docker Registry without Nginx errors.
+
+Step 6 — Publishing to Your Private Docker Registry
+
+
+
+You are now ready to publish an image to your private Docker Registry, but first you have to create an image. For this tutorial, you will create a simple image based on the ubuntu image from Docker Hub. Docker Hub is a publicly hosted registry, with many pre-configured images that can be leveraged to quickly Dockerize applications. Using the ubuntu image, you will test pushing and pulling to your registry.
+
+From your client server, create a small, empty image to push to your new registry, the -i and -t flags give you interactive shell access into the container:
+
+docker run -t -i ubuntu /bin/bash
+
+
+
+After it finishes downloading you’ll be inside a Docker prompt, note that your container ID following root@ will vary. Make a quick change to the filesystem by creating a file called SUCCESS. In the next step, you’ll be able to use this file to determine whether the publishing process is successful:
+
+touch /SUCCESS
+
+
+Exit out of the Docker container:
+
+exit
+
+
+The following command creates a new image called test-image based on the image already running plus any changes you have made. In our case, the addition of the /SUCCESS file is included in the new image.
+
+Commit the change:
+
+docker commit $(docker ps -lq) test-image
+
+
+At this point, the image only exists locally. Now you can push it to the new registry you have created. Log in to your Docker Registry:
+
+docker login https://example.com
+
+
+Enter the username and corresponding password from earlier. Next, you will tag the image with the private registry’s location in order to push to it:
+
+
+docker tag test-image example.com/test-image
+
+
+
+Push the newly tagged image to the registry:
+
+docker push example.com/test-image
+
+
+Your output will look similar to the following:
+
+Output
+The push refers to a repository [example.com/test-image]
+e3fbbfb44187: Pushed
+5f70bf18a086: Pushed
+a3b5c80a4eba: Pushed
+7f18b442972b: Pushed
+3ce512daaf78: Pushed
+7aae4540b42d: Pushed
+...
+
+You’ve verified that your registry handles user authentication, and allows authenticated users to push images to the registry. Next, you will confirm that you are able to pull images from the registry as well.
+
+
+
+Step 7 — Pulling From Your Private Docker Registry
+
+
+
+
+Return to your registry server so that you can test pulling the image from your client server. It is also possible to test this from a third server.
+
+Log in with the username and password you set up previously:
+
+
+
+docker login https://example.com
+
+
+You’re now ready to pull the image. Use your domain name and image name, which you tagged in the previous step:
+
+
+
+docker pull example.com/test-image
+
+
+Docker will download the image and return you to the prompt. If you run the image on the registry server you’ll see the SUCCESS file you created earlier is there:
+
+
+
+docker run -it example.com/test-image /bin/bash
+
+
+
+
+
+
+
+
+
+
+
+
